@@ -1,11 +1,15 @@
 package graphql
 
 import (
+	"context"
 	"net/http"
+	"strings"
 
 	"metachat/internal/graphql/graph"
 	"metachat/internal/repository"
+	"metachat/pkg/utils"
 
+	"github.com/99designs/gqlgen/graphql"
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/extension"
 	"github.com/99designs/gqlgen/graphql/handler/lru"
@@ -13,6 +17,7 @@ import (
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/vektah/gqlparser/v2/ast"
 )
+
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +44,26 @@ func NewResolverWithRepos(userRepo *repository.UserRepository, chatRepo *reposit
 	}
 }
 
+const userIDKey = "userID"
+
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				token := parts[1]
+				claims, err := utils.ValidateToken(token)
+				if err == nil {
+					ctx := context.WithValue(r.Context(), userIDKey, claims.UserID)
+					r = r.WithContext(ctx)
+				}
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func NewGraphQLHandler(resolver *graph.Resolver) http.Handler {
 	srv := handler.New(graph.NewExecutableSchema(graph.Config{Resolvers: resolver}))
 
@@ -53,7 +78,25 @@ func NewGraphQLHandler(resolver *graph.Resolver) http.Handler {
 		Cache: lru.New[string](100),
 	})
 
-	return corsMiddleware(srv)
+	srv.AroundOperations(func(ctx context.Context, next graphql.OperationHandler) graphql.ResponseHandler {
+		opCtx := graphql.GetOperationContext(ctx)
+		if opCtx != nil {
+			authHeader := opCtx.Headers.Get("Authorization")
+			if authHeader != "" {
+				parts := strings.Split(authHeader, " ")
+				if len(parts) == 2 && parts[0] == "Bearer" {
+					token := parts[1]
+					claims, err := utils.ValidateToken(token)
+					if err == nil {
+						ctx = context.WithValue(ctx, userIDKey, claims.UserID)
+					}
+				}
+			}
+		}
+		return next(ctx)
+	})
+
+	return corsMiddleware(authMiddleware(srv))
 }
 
 func NewPlaygroundHandler() http.Handler {

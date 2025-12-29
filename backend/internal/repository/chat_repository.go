@@ -79,3 +79,43 @@ func (r *ChatRepository) GetChatUsers(chatID uuid.UUID) ([]models.User, error) {
 	return chat.Users, nil
 }
 
+func (r *ChatRepository) ListByUserID(userID uint, limit, offset int) ([]models.Chat, error) {
+	type result struct {
+		ChatID uuid.UUID `gorm:"column:chat_id"`
+	}
+	var results []result
+	
+	err := database.DB.Table("chat_users").
+		Select("chat_id").
+		Where("user_id = ?", userID).
+		Limit(limit).
+		Offset(offset).
+		Scan(&results).Error
+	if err != nil {
+		return nil, err
+	}
+
+	if len(results) == 0 {
+		return []models.Chat{}, nil
+	}
+
+	var chatIDs []uuid.UUID
+	for _, r := range results {
+		chatIDs = append(chatIDs, r.ChatID)
+	}
+
+	var chats []models.Chat
+	err = database.DB.Preload("Users").
+		Where("id IN ?", chatIDs).
+		Find(&chats).Error
+	return chats, err
+}
+
+func (r *ChatRepository) IsUserInChat(chatID uuid.UUID, userID uint) (bool, error) {
+	var count int64
+	err := database.DB.Table("chat_users").
+		Where("chat_id = ? AND user_id = ?", chatID, userID).
+		Count(&count).Error
+	return count > 0, err
+}
+

@@ -17,6 +17,13 @@ import (
 	"github.com/google/uuid"
 )
 
+const userIDKey = "userID"
+
+func getUserIDFromContext(ctx context.Context) (uint, bool) {
+	userID, ok := ctx.Value(userIDKey).(uint)
+	return userID, ok
+}
+
 // Login is the resolver for the login field.
 func (r *mutationResolver) Login(ctx context.Context, input model.LoginInput) (string, error) {
 	user, err := r.UserRepo.GetByName(input.Name)
@@ -186,9 +193,22 @@ func (r *mutationResolver) UpdateChat(ctx context.Context, input model.UpdateCha
 
 // DeleteChat is the resolver for the deleteChat field.
 func (r *mutationResolver) DeleteChat(ctx context.Context, id string) (bool, error) {
+	userID, ok := getUserIDFromContext(ctx)
+	if !ok {
+		return false, fmt.Errorf("unauthorized")
+	}
+
 	chatID, err := uuid.Parse(id)
 	if err != nil {
 		return false, fmt.Errorf("invalid chat ID: %w", err)
+	}
+
+	isMember, err := r.ChatRepo.IsUserInChat(chatID, userID)
+	if err != nil {
+		return false, fmt.Errorf("failed to check chat membership: %w", err)
+	}
+	if !isMember {
+		return false, fmt.Errorf("chat not found")
 	}
 
 	if err := r.ChatRepo.Delete(chatID); err != nil {
@@ -363,9 +383,22 @@ func (r *queryResolver) Users(ctx context.Context, limit *int32, offset *int32) 
 
 // Chat is the resolver for the chat field.
 func (r *queryResolver) Chat(ctx context.Context, id string) (*model.Chat, error) {
+	userID, ok := getUserIDFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("unauthorized")
+	}
+
 	chatID, err := uuid.Parse(id)
 	if err != nil {
 		return nil, fmt.Errorf("invalid chat ID: %w", err)
+	}
+
+	isMember, err := r.ChatRepo.IsUserInChat(chatID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check chat membership: %w", err)
+	}
+	if !isMember {
+		return nil, fmt.Errorf("chat not found")
 	}
 
 	chat, err := r.ChatRepo.GetByID(chatID)
@@ -378,6 +411,11 @@ func (r *queryResolver) Chat(ctx context.Context, id string) (*model.Chat, error
 
 // Chats is the resolver for the chats field.
 func (r *queryResolver) Chats(ctx context.Context, limit *int32, offset *int32) ([]*model.Chat, error) {
+	userID, ok := getUserIDFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("unauthorized")
+	}
+
 	limitVal := 100
 	if limit != nil {
 		limitVal = int(*limit)
@@ -388,7 +426,7 @@ func (r *queryResolver) Chats(ctx context.Context, limit *int32, offset *int32) 
 		offsetVal = int(*offset)
 	}
 
-	chats, err := r.ChatRepo.List(limitVal, offsetVal)
+	chats, err := r.ChatRepo.ListByUserID(userID, limitVal, offsetVal)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list chats: %w", err)
 	}

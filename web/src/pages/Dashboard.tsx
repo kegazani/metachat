@@ -1,5 +1,6 @@
-import { useQuery } from '@apollo/client'
+import { useQuery, useMutation } from '@apollo/client'
 import { CHATS_QUERY } from '../graphql/queries/chats'
+import { DELETE_CHAT_MUTATION } from '../graphql/mutations/chats'
 import Card from '../components/UI/Card'
 import { Link } from 'react-router-dom'
 import Button from '../components/UI/Button'
@@ -11,12 +12,25 @@ export default function Dashboard() {
     variables: { limit: 100, offset: 0 },
   })
   const [isModalOpen, setIsModalOpen] = useState(false)
+  
+  const [deleteChat] = useMutation(DELETE_CHAT_MUTATION, {
+    onCompleted: () => {
+      refetch()
+    },
+  })
+
+  const handleDeleteChat = async (e: React.MouseEvent, chatId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (window.confirm('Are you sure you want to delete this chat?')) {
+      await deleteChat({ variables: { id: chatId } })
+    }
+  }
 
   if (loading) return <div className="text-text-primary">Loading...</div>
   if (error) return <div className="text-red-400">Error: {error.message}</div>
 
   const chats = data?.chats || []
-  const diaryChat = chats.find((chat: any) => chat.name === 'Дневник')
   const regularChats = chats.filter((chat: any) => chat.name !== 'Дневник')
 
   return (
@@ -24,11 +38,9 @@ export default function Dashboard() {
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-5xl font-bold text-text-primary">Chats</h1>
         <div className="flex gap-3">
-          {diaryChat && (
-            <Link to="/diary">
-              <Button variant="secondary">Мой дневник</Button>
-            </Link>
-          )}
+          <Link to="/diary">
+            <Button variant="secondary">Дневник</Button>
+          </Link>
           <Button onClick={() => setIsModalOpen(true)}>Create Chat</Button>
         </div>
       </div>
@@ -46,6 +58,13 @@ export default function Dashboard() {
               <Card className="hover:bg-black/40 transition-colors cursor-pointer h-full">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-xl font-bold text-text-primary">{chat.name}</h3>
+                  <button
+                    onClick={(e) => handleDeleteChat(e, chat.id)}
+                    className="text-red-400 hover:text-red-300 px-2 py-1 rounded transition-colors"
+                    title="Delete chat"
+                  >
+                    ×
+                  </button>
                 </div>
                 <p className="text-text-secondary text-sm">
                   {chat.users.length} {chat.users.length === 1 ? 'participant' : 'participants'}
