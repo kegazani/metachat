@@ -1,0 +1,95 @@
+scalar Time
+scalar JSON
+
+type User {
+  id: ID!
+  name: String!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type Chat {
+  id: ID!
+  name: String!
+  users: [User!]!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type ChatHistory {
+  id: ID!
+  chatId: ID!
+  userId: ID!
+  messageText: String!
+  type: String!
+  createdAt: Time!
+}
+
+type Diary {
+  id: ID!
+  userId: ID!
+  chatId: ID!
+  data: JSON!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type Query {
+  user(id: ID!): User
+  users(limit: Int, offset: Int): [User!]!
+  chat(id: ID!): Chat
+  chats(limit: Int, offset: Int): [Chat!]!
+  chatHistory(id: ID!): ChatHistory
+  chatHistories(chatId: ID!, limit: Int): [ChatHistory!]!
+  diary(userId: ID!): Diary
+}
+
+input CreateUserInput {
+  name: String!
+  password: String!
+}
+
+input UpdateUserInput {
+  id: ID!
+  name: String
+  password: String
+}
+
+input CreateChatInput {
+  name: String!
+  userIds: [ID!]!
+}
+
+input UpdateChatInput {
+  id: ID!
+  name: String
+  userIds: [ID!]
+}
+
+input CreateChatHistoryInput {
+  chatId: ID!
+  userId: ID!
+  messageText: String!
+  type: String
+}
+
+input LoginInput {
+  name: String!
+  password: String!
+}
+
+type Mutation {
+  login(input: LoginInput!): String!
+  createUser(input: CreateUserInput!): User!
+  updateUser(input: UpdateUserInput!): User!
+  deleteUser(id: ID!): Boolean!
+  createChat(input: CreateChatInput!): Chat!
+  updateChat(input: UpdateChatInput!): Chat!
+  deleteChat(id: ID!): Boolean!
+  addUserToChat(chatId: ID!, userId: ID!): Chat!
+  removeUserFromChat(chatId: ID!, userId: ID!): Chat!
+  createChatHistory(input: CreateChatHistoryInput!): ChatHistory!
+  deleteChatHistory(id: ID!): Boolean!
+  updateDiary(userId: ID!, data: JSON!): Diary!
+}
+

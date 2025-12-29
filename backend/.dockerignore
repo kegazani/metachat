@@ -1,0 +1,14 @@
+bin/
+*.md
+.git/
+.gitignore
+.env
+.env.example
+*.log
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+

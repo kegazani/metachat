@@ -1,0 +1,174 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: metachat-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: metachat
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  cassandra:
+    image: cassandra:4.1
+    container_name: metachat-cassandra
+    environment:
+      CASSANDRA_CLUSTER_NAME: metachat-cluster
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_RACK: rack1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+    ports:
+      - "9042:9042"
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "nodetool status | grep -E '^UN'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  cassandra-init:
+    image: cassandra:4.1
+    container_name: metachat-cassandra-init
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    volumes:
+      - ./backend/init-cassandra.cql:/init.cql
+    command: >
+      bash -c "
+        echo 'Waiting for Cassandra to be ready...' &&
+        until cqlsh cassandra -e 'DESCRIBE KEYSPACES' > /dev/null 2>&1; do
+          echo 'Waiting for Cassandra...' &&
+          sleep 5
+        done &&
+        echo 'Creating keyspace...' &&
+        cqlsh cassandra -f /init.cql &&
+        echo 'Keyspace created successfully'
+      "
+    restart: "no"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: metachat-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: metachat-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: metachat-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_PORT: 8080
+      APP_ENV: development
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: metachat
+      POSTGRES_SSLMODE: disable
+      CASSANDRA_HOSTS: cassandra:9042
+      CASSANDRA_KEYSPACE: metachat
+      CASSANDRA_USERNAME: ""
+      CASSANDRA_PASSWORD: ""
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_VERSION: 2.6.0
+      KAFKA_CONSUMER_GROUP: metachat-group
+      KAFKA_TOPICS: events
+    command: ["/app/migrate"]
+    restart: "no"
+
+  app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: metachat-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      cassandra-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    environment:
+      APP_PORT: 8080
+      APP_ENV: development
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: metachat
+      POSTGRES_SSLMODE: disable
+      CASSANDRA_HOSTS: cassandra:9042
+      CASSANDRA_KEYSPACE: metachat
+      CASSANDRA_USERNAME: ""
+      CASSANDRA_PASSWORD: ""
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_VERSION: 2.6.0
+      KAFKA_CONSUMER_GROUP: metachat-group
+      KAFKA_TOPICS: events
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: metachat-web
+    depends_on:
+      app:
+        condition: service_started
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  cassandra_data:
+
