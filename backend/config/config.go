@@ -12,6 +12,7 @@ type Config struct {
 	Postgres  PostgresConfig
 	Kafka     KafkaConfig
 	Cassandra CassandraConfig
+	AI        AIConfig
 }
 
 type AppConfig struct {
@@ -42,6 +43,10 @@ type CassandraConfig struct {
 	Password string
 }
 
+type AIConfig struct {
+	URL string
+}
+
 func Load() (*Config, error) {
 	_ = godotenv.Load()
 
@@ -69,6 +74,9 @@ func Load() (*Config, error) {
 			Keyspace: getEnv("CASSANDRA_KEYSPACE", "metachat"),
 			Username: getEnv("CASSANDRA_USERNAME", ""),
 			Password: getEnv("CASSANDRA_PASSWORD", ""),
+		},
+		AI: AIConfig{
+			URL: getEnv("AI_SERVICE_URL", "http://localhost:8000"),
 		},
 	}
 

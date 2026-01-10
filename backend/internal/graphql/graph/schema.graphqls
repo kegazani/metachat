@@ -22,6 +22,9 @@ type ChatHistory {
   userId: ID!
   messageText: String!
   type: String!
+  emotion: Int
+  emotionLabel: String
+  emotionConfidence: Float
   createdAt: Time!
 }
 
@@ -34,6 +37,20 @@ type Diary {
   updatedAt: Time!
 }
 
+type HealthData {
+  id: ID!
+  userId: ID!
+  heartRate: Float
+  sdnn: Float
+  rmssd: Float
+  pnn50: Float
+  emotion: Int
+  emotionLabel: String
+  emotionConfidence: Float
+  timestamp: Time!
+  createdAt: Time!
+}
+
 type Query {
   user(id: ID!): User
   users(limit: Int, offset: Int): [User!]!
@@ -42,6 +59,7 @@ type Query {
   chatHistory(id: ID!): ChatHistory
   chatHistories(chatId: ID!, limit: Int): [ChatHistory!]!
   diary(userId: ID!): Diary
+  healthData(userId: ID!, startDate: Time, endDate: Time, limit: Int, offset: Int): [HealthData!]!
 }
 
 input CreateUserInput {
@@ -78,6 +96,14 @@ input LoginInput {
   password: String!
 }
 
+input CreateHealthDataInput {
+  heartRate: Float
+  sdnn: Float
+  rmssd: Float
+  pnn50: Float
+  timestamp: Time!
+}
+
 type Mutation {
   login(input: LoginInput!): String!
   createUser(input: CreateUserInput!): User!
@@ -91,5 +117,6 @@ type Mutation {
   createChatHistory(input: CreateChatHistoryInput!): ChatHistory!
   deleteChatHistory(id: ID!): Boolean!
   updateDiary(userId: ID!, data: JSON!): Diary!
+  createHealthData(input: CreateHealthDataInput!): HealthData!
 }
 

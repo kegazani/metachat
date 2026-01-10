@@ -7,22 +7,18 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"metachat/internal/graphql/graph/model"
 	"metachat/internal/models"
+	"metachat/internal/services"
 	"metachat/pkg/utils"
 	"strconv"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
-
-const userIDKey = "userID"
-
-func getUserIDFromContext(ctx context.Context) (uint, bool) {
-	userID, ok := ctx.Value(userIDKey).(uint)
-	return userID, ok
-}
 
 // Login is the resolver for the login field.
 func (r *mutationResolver) Login(ctx context.Context, input model.LoginInput) (string, error) {
@@ -193,22 +189,9 @@ func (r *mutationResolver) UpdateChat(ctx context.Context, input model.UpdateCha
 
 // DeleteChat is the resolver for the deleteChat field.
 func (r *mutationResolver) DeleteChat(ctx context.Context, id string) (bool, error) {
-	userID, ok := getUserIDFromContext(ctx)
-	if !ok {
-		return false, fmt.Errorf("unauthorized")
-	}
-
 	chatID, err := uuid.Parse(id)
 	if err != nil {
 		return false, fmt.Errorf("invalid chat ID: %w", err)
-	}
-
-	isMember, err := r.ChatRepo.IsUserInChat(chatID, userID)
-	if err != nil {
-		return false, fmt.Errorf("failed to check chat membership: %w", err)
-	}
-	if !isMember {
-		return false, fmt.Errorf("chat not found")
 	}
 
 	if err := r.ChatRepo.Delete(chatID); err != nil {
@@ -268,45 +251,83 @@ func (r *mutationResolver) RemoveUserFromChat(ctx context.Context, chatID string
 
 // CreateChatHistory is the resolver for the createChatHistory field.
 func (r *mutationResolver) CreateChatHistory(ctx context.Context, input model.CreateChatHistoryInput) (*model.ChatHistory, error) {
+	userIDStr := input.UserID
+	if userIDStr == "" {
+		if userIDVal := ctx.Value("userID"); userIDVal != nil {
+			if userID, ok := userIDVal.(uint); ok {
+				userIDStr = fmt.Sprintf("%d", userID)
+			}
+		}
+	}
+
+	userIDUint, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+	userID := uint(userIDUint)
+
 	chatID, err := uuid.Parse(input.ChatID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid chat ID: %w", err)
 	}
 
-	userID, err := strconv.ParseUint(input.UserID, 10, 32)
-	if err != nil {
-		return nil, fmt.Errorf("invalid user ID: %w", err)
-	}
-
-	historyType := "normal"
-	if input.Type != nil {
-		historyType = *input.Type
-	}
-
 	history := &models.ChatHistory{
 		ChatID:      chatID,
-		UserID:      uint(userID),
+		UserID:      userID,
 		MessageText: input.MessageText,
-		Type:        historyType,
+		Type:        "normal",
+	}
+
+	if input.Type != nil {
+		history.Type = *input.Type
+	}
+
+	healthDataList, err := r.HealthDataRepo.GetByUserID(userID, 1, 0)
+	if err == nil && len(healthDataList) > 0 {
+		latestHealth := healthDataList[0]
+		if latestHealth.HeartRate != nil {
+			aiResp, err := r.AIService.PredictEmotion(services.AIRequest{
+				HeartRate: *latestHealth.HeartRate,
+			})
+			if err == nil && aiResp != nil {
+				emotionID := aiResp.PredictedEmotionID
+				emotionLabel := aiResp.PredictedEmotion
+				confidence := aiResp.Confidence
+				history.Emotion = &emotionID
+				history.EmotionLabel = &emotionLabel
+				history.EmotionConfidence = &confidence
+			}
+		}
 	}
 
 	if err := r.ChatHistoryRepo.Create(history); err != nil {
 		return nil, fmt.Errorf("failed to create chat history: %w", err)
 	}
 
-	createdHistory, err := r.ChatHistoryRepo.GetByID(history.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch created chat history: %w", err)
+	var emotion *int32
+	if history.Emotion != nil {
+		val := int32(*history.Emotion)
+		emotion = &val
 	}
 
-	return toGraphQLChatHistory(createdHistory), nil
+	return &model.ChatHistory{
+		ID:                history.ID.String(),
+		ChatID:            history.ChatID.String(),
+		UserID:            fmt.Sprintf("%d", history.UserID),
+		MessageText:       history.MessageText,
+		Type:              history.Type,
+		Emotion:           emotion,
+		EmotionLabel:      history.EmotionLabel,
+		EmotionConfidence: history.EmotionConfidence,
+		CreatedAt:         time.Unix(history.CreatedAt, 0),
+	}, nil
 }
 
 // DeleteChatHistory is the resolver for the deleteChatHistory field.
 func (r *mutationResolver) DeleteChatHistory(ctx context.Context, id string) (bool, error) {
 	historyID, err := uuid.Parse(id)
 	if err != nil {
-		return false, fmt.Errorf("invalid chat history ID: %w", err)
+		return false, fmt.Errorf("invalid history ID: %w", err)
 	}
 
 	if err := r.ChatHistoryRepo.Delete(historyID); err != nil {
@@ -322,23 +343,105 @@ func (r *mutationResolver) UpdateDiary(ctx context.Context, userID string, data 
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)
 	}
+	userIDInt := uint(userIDUint)
 
-	diary, err := r.DiaryRepo.GetByUserID(uint(userIDUint))
+	diary, err := r.DiaryRepo.GetByUserID(userIDInt)
 	if err != nil {
-		return nil, fmt.Errorf("diary not found: %w", err)
+		return nil, fmt.Errorf("failed to get diary: %w", err)
 	}
 
-	diary.Data = models.JSONB(data)
+	diaryData := models.JSONB{}
+	for k, v := range data {
+		diaryData[k] = v
+	}
+	diary.Data = diaryData
+
 	if err := r.DiaryRepo.Update(diary); err != nil {
 		return nil, fmt.Errorf("failed to update diary: %w", err)
 	}
 
-	updatedDiary, err := r.DiaryRepo.GetByID(diary.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch updated diary: %w", err)
+	resultData := make(map[string]any)
+	if diary.Data != nil {
+		for k, v := range diary.Data {
+			resultData[k] = v
+		}
 	}
 
-	return toGraphQLDiary(updatedDiary), nil
+	return &model.Diary{
+		ID:        fmt.Sprintf("%d", diary.ID),
+		UserID:    fmt.Sprintf("%d", diary.UserID),
+		ChatID:    diary.ChatID.String(),
+		Data:      resultData,
+		CreatedAt: diary.CreatedAt,
+		UpdatedAt: diary.UpdatedAt,
+	}, nil
+}
+
+// CreateHealthData is the resolver for the createHealthData field.
+func (r *mutationResolver) CreateHealthData(ctx context.Context, input model.CreateHealthDataInput) (*model.HealthData, error) {
+	userIDVal := ctx.Value("userID")
+	if userIDVal == nil {
+		return nil, fmt.Errorf("unauthorized: user ID not found in context")
+	}
+
+	userID, ok := userIDVal.(uint)
+	if !ok {
+		return nil, fmt.Errorf("invalid user ID type in context")
+	}
+
+	healthData := &models.HealthData{
+		UserID:    userID,
+		HeartRate: input.HeartRate,
+		SDNN:      input.Sdnn,
+		RMSSD:     input.Rmssd,
+		PNN50:     input.Pnn50,
+		Timestamp: input.Timestamp.Unix(),
+	}
+
+	if healthData.HeartRate != nil {
+		aiResp, err := r.AIService.PredictEmotion(services.AIRequest{
+			HeartRate: *healthData.HeartRate,
+		})
+		if err != nil {
+			fmt.Printf("Error predicting emotion for heart rate %.2f: %v\n", *healthData.HeartRate, err)
+		} else if aiResp != nil {
+			emotionID := aiResp.PredictedEmotionID
+			emotionLabel := aiResp.PredictedEmotion
+			confidence := aiResp.Confidence
+			healthData.Emotion = &emotionID
+			healthData.EmotionLabel = &emotionLabel
+			healthData.EmotionConfidence = &confidence
+			fmt.Printf("Emotion predicted: %s (ID: %d, confidence: %.2f) for heart rate: %.2f\n", emotionLabel, emotionID, confidence, *healthData.HeartRate)
+		} else {
+			fmt.Printf("AI service returned nil response for heart rate %.2f\n", *healthData.HeartRate)
+		}
+	} else {
+		fmt.Printf("HeartRate is nil, skipping emotion prediction\n")
+	}
+
+	if err := r.HealthDataRepo.Create(healthData); err != nil {
+		return nil, fmt.Errorf("failed to create health data: %w", err)
+	}
+
+	var emotion *int32
+	if healthData.Emotion != nil {
+		val := int32(*healthData.Emotion)
+		emotion = &val
+	}
+
+	return &model.HealthData{
+		ID:                healthData.ID.String(),
+		UserID:            fmt.Sprintf("%d", healthData.UserID),
+		HeartRate:         healthData.HeartRate,
+		Sdnn:              healthData.SDNN,
+		Rmssd:             healthData.RMSSD,
+		Pnn50:             healthData.PNN50,
+		Emotion:           emotion,
+		EmotionLabel:      healthData.EmotionLabel,
+		EmotionConfidence: healthData.EmotionConfidence,
+		Timestamp:         time.Unix(healthData.Timestamp, 0),
+		CreatedAt:         time.Unix(healthData.CreatedAt, 0),
+	}, nil
 }
 
 // User is the resolver for the user field.
@@ -358,24 +461,29 @@ func (r *queryResolver) User(ctx context.Context, id string) (*model.User, error
 
 // Users is the resolver for the users field.
 func (r *queryResolver) Users(ctx context.Context, limit *int32, offset *int32) ([]*model.User, error) {
-	limitVal := 100
+	limitInt := 100
 	if limit != nil {
-		limitVal = int(*limit)
+		limitInt = int(*limit)
 	}
 
-	offsetVal := 0
+	offsetInt := 0
 	if offset != nil {
-		offsetVal = int(*offset)
+		offsetInt = int(*offset)
 	}
 
-	users, err := r.UserRepo.List(limitVal, offsetVal)
+	users, err := r.UserRepo.List(limitInt, offsetInt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list users: %w", err)
+		return nil, fmt.Errorf("failed to get users: %w", err)
 	}
 
 	result := make([]*model.User, len(users))
-	for i := range users {
-		result[i] = toGraphQLUser(&users[i])
+	for i, u := range users {
+		result[i] = &model.User{
+			ID:        fmt.Sprintf("%d", u.ID),
+			Name:      u.Name,
+			CreatedAt: u.CreatedAt,
+			UpdatedAt: u.UpdatedAt,
+		}
 	}
 
 	return result, nil
@@ -383,22 +491,9 @@ func (r *queryResolver) Users(ctx context.Context, limit *int32, offset *int32) 
 
 // Chat is the resolver for the chat field.
 func (r *queryResolver) Chat(ctx context.Context, id string) (*model.Chat, error) {
-	userID, ok := getUserIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("unauthorized")
-	}
-
 	chatID, err := uuid.Parse(id)
 	if err != nil {
 		return nil, fmt.Errorf("invalid chat ID: %w", err)
-	}
-
-	isMember, err := r.ChatRepo.IsUserInChat(chatID, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check chat membership: %w", err)
-	}
-	if !isMember {
-		return nil, fmt.Errorf("chat not found")
 	}
 
 	chat, err := r.ChatRepo.GetByID(chatID)
@@ -411,29 +506,24 @@ func (r *queryResolver) Chat(ctx context.Context, id string) (*model.Chat, error
 
 // Chats is the resolver for the chats field.
 func (r *queryResolver) Chats(ctx context.Context, limit *int32, offset *int32) ([]*model.Chat, error) {
-	userID, ok := getUserIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("unauthorized")
-	}
-
-	limitVal := 100
+	limitInt := 100
 	if limit != nil {
-		limitVal = int(*limit)
+		limitInt = int(*limit)
 	}
 
-	offsetVal := 0
+	offsetInt := 0
 	if offset != nil {
-		offsetVal = int(*offset)
+		offsetInt = int(*offset)
 	}
 
-	chats, err := r.ChatRepo.ListByUserID(userID, limitVal, offsetVal)
+	chats, err := r.ChatRepo.List(limitInt, offsetInt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list chats: %w", err)
+		return nil, fmt.Errorf("failed to get chats: %w", err)
 	}
 
 	result := make([]*model.Chat, len(chats))
-	for i := range chats {
-		result[i] = toGraphQLChat(&chats[i])
+	for i, c := range chats {
+		result[i] = toGraphQLChat(&c)
 	}
 
 	return result, nil
@@ -443,15 +533,31 @@ func (r *queryResolver) Chats(ctx context.Context, limit *int32, offset *int32) 
 func (r *queryResolver) ChatHistory(ctx context.Context, id string) (*model.ChatHistory, error) {
 	historyID, err := uuid.Parse(id)
 	if err != nil {
-		return nil, fmt.Errorf("invalid chat history ID: %w", err)
+		return nil, fmt.Errorf("invalid history ID: %w", err)
 	}
 
 	history, err := r.ChatHistoryRepo.GetByID(historyID)
 	if err != nil {
-		return nil, fmt.Errorf("chat history not found: %w", err)
+		return nil, fmt.Errorf("failed to get chat history: %w", err)
 	}
 
-	return toGraphQLChatHistory(history), nil
+	var emotion *int32
+	if history.Emotion != nil {
+		val := int32(*history.Emotion)
+		emotion = &val
+	}
+
+	return &model.ChatHistory{
+		ID:                history.ID.String(),
+		ChatID:            history.ChatID.String(),
+		UserID:            fmt.Sprintf("%d", history.UserID),
+		MessageText:       history.MessageText,
+		Type:              history.Type,
+		Emotion:           emotion,
+		EmotionLabel:      history.EmotionLabel,
+		EmotionConfidence: history.EmotionConfidence,
+		CreatedAt:         time.Unix(history.CreatedAt, 0),
+	}, nil
 }
 
 // ChatHistories is the resolver for the chatHistories field.
@@ -461,19 +567,35 @@ func (r *queryResolver) ChatHistories(ctx context.Context, chatID string, limit 
 		return nil, fmt.Errorf("invalid chat ID: %w", err)
 	}
 
-	limitVal := 100
+	limitInt := 100
 	if limit != nil {
-		limitVal = int(*limit)
+		limitInt = int(*limit)
 	}
 
-	histories, err := r.ChatHistoryRepo.GetByChatID(chatUUID, limitVal)
+	histories, err := r.ChatHistoryRepo.GetByChatID(chatUUID, limitInt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list chat histories: %w", err)
+		return nil, fmt.Errorf("failed to get chat histories: %w", err)
 	}
 
 	result := make([]*model.ChatHistory, len(histories))
-	for i := range histories {
-		result[i] = toGraphQLChatHistory(&histories[i])
+	for i, h := range histories {
+		var emotion *int32
+		if h.Emotion != nil {
+			val := int32(*h.Emotion)
+			emotion = &val
+		}
+
+		result[i] = &model.ChatHistory{
+			ID:                h.ID.String(),
+			ChatID:            h.ChatID.String(),
+			UserID:            fmt.Sprintf("%d", h.UserID),
+			MessageText:       h.MessageText,
+			Type:              h.Type,
+			Emotion:           emotion,
+			EmotionLabel:      h.EmotionLabel,
+			EmotionConfidence: h.EmotionConfidence,
+			CreatedAt:         time.Unix(h.CreatedAt, 0),
+		}
 	}
 
 	return result, nil
@@ -485,13 +607,86 @@ func (r *queryResolver) Diary(ctx context.Context, userID string) (*model.Diary,
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)
 	}
+	userIDInt := uint(userIDUint)
 
-	diary, err := r.DiaryRepo.GetByUserID(uint(userIDUint))
+	diary, err := r.DiaryRepo.GetByUserID(userIDInt)
 	if err != nil {
-		return nil, fmt.Errorf("diary not found: %w", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get diary: %w", err)
 	}
 
-	return toGraphQLDiary(diary), nil
+	data := make(map[string]any)
+	if diary.Data != nil {
+		for k, v := range diary.Data {
+			data[k] = v
+		}
+	}
+
+	return &model.Diary{
+		ID:        fmt.Sprintf("%d", diary.ID),
+		UserID:    fmt.Sprintf("%d", diary.UserID),
+		ChatID:    diary.ChatID.String(),
+		Data:      data,
+		CreatedAt: diary.CreatedAt,
+		UpdatedAt: diary.UpdatedAt,
+	}, nil
+}
+
+// HealthData is the resolver for the healthData field.
+func (r *queryResolver) HealthData(ctx context.Context, userID string, startDate *time.Time, endDate *time.Time, limit *int32, offset *int32) ([]*model.HealthData, error) {
+	userIDUint, err := strconv.ParseUint(userID, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+	userIDInt := uint(userIDUint)
+
+	limitInt := 100
+	if limit != nil {
+		limitInt = int(*limit)
+	}
+
+	offsetInt := 0
+	if offset != nil {
+		offsetInt = int(*offset)
+	}
+
+	var healthDataList []models.HealthData
+	if startDate != nil || endDate != nil {
+		healthDataList, err = r.HealthDataRepo.GetByUserIDAndDateRange(userIDInt, startDate, endDate, limitInt, offsetInt)
+	} else {
+		healthDataList, err = r.HealthDataRepo.GetByUserID(userIDInt, limitInt, offsetInt)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get health data: %w", err)
+	}
+
+	result := make([]*model.HealthData, len(healthDataList))
+	for i, h := range healthDataList {
+		var emotion *int32
+		if h.Emotion != nil {
+			val := int32(*h.Emotion)
+			emotion = &val
+		}
+
+		result[i] = &model.HealthData{
+			ID:                h.ID.String(),
+			UserID:            fmt.Sprintf("%d", h.UserID),
+			HeartRate:         h.HeartRate,
+			Sdnn:              h.SDNN,
+			Rmssd:             h.RMSSD,
+			Pnn50:             h.PNN50,
+			Emotion:           emotion,
+			EmotionLabel:      h.EmotionLabel,
+			EmotionConfidence: h.EmotionConfidence,
+			Timestamp:         time.Unix(h.Timestamp, 0),
+			CreatedAt:         time.Unix(h.CreatedAt, 0),
+		}
+	}
+
+	return result, nil
 }
 
 // Mutation returns MutationResolver implementation.
@@ -503,56 +698,31 @@ func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 
-func toGraphQLUser(user *models.User) *model.User {
+// !!! WARNING !!!
+// The code below was going to be deleted when updating resolvers. It has been copied here so you have
+// one last chance to move it out of harms way if you want. There are two reasons this happens:
+//  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+//    it when you're done.
+//  - You have helper methods in this file. Move them out to keep these resolver files clean.
+
+func toGraphQLUser(u *models.User) *model.User {
 	return &model.User{
-		ID:        fmt.Sprintf("%d", user.ID),
-		Name:      user.Name,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
+		ID:        fmt.Sprintf("%d", u.ID),
+		Name:      u.Name,
+		CreatedAt: u.CreatedAt,
+		UpdatedAt: u.UpdatedAt,
 	}
 }
-
-func toGraphQLChat(chat *models.Chat) *model.Chat {
-	users := make([]*model.User, len(chat.Users))
-	for i := range chat.Users {
-		users[i] = toGraphQLUser(&chat.Users[i])
+func toGraphQLChat(c *models.Chat) *model.Chat {
+	users := make([]*model.User, len(c.Users))
+	for i, u := range c.Users {
+		users[i] = toGraphQLUser(&u)
 	}
-
 	return &model.Chat{
-		ID:        chat.ID.String(),
-		Name:      chat.Name,
+		ID:        c.ID.String(),
+		Name:      c.Name,
 		Users:     users,
-		CreatedAt: chat.CreatedAt,
-		UpdatedAt: chat.UpdatedAt,
-	}
-}
-
-func toGraphQLChatHistory(history *models.ChatHistory) *model.ChatHistory {
-	historyType := history.Type
-	if historyType == "" {
-		historyType = "normal"
-	}
-	return &model.ChatHistory{
-		ID:          history.ID.String(),
-		ChatID:      history.ChatID.String(),
-		UserID:      fmt.Sprintf("%d", history.UserID),
-		MessageText: history.MessageText,
-		Type:        historyType,
-		CreatedAt:   time.Unix(history.CreatedAt, 0),
-	}
-}
-
-func toGraphQLDiary(diary *models.Diary) *model.Diary {
-	data := make(map[string]any)
-	if diary.Data != nil {
-		data = map[string]any(diary.Data)
-	}
-	return &model.Diary{
-		ID:        fmt.Sprintf("%d", diary.ID),
-		UserID:    fmt.Sprintf("%d", diary.UserID),
-		ChatID:    diary.ChatID.String(),
-		Data:      data,
-		CreatedAt: diary.CreatedAt,
-		UpdatedAt: diary.UpdatedAt,
+		CreatedAt: c.CreatedAt,
+		UpdatedAt: c.UpdatedAt,
 	}
 }

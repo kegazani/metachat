@@ -6,10 +6,8 @@ import (
 	"bytes"
 	"context"
 	"embed"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"metachat/internal/graphql/graph/model"
 	"strconv"
 	"sync"
@@ -59,12 +57,15 @@ type ComplexityRoot struct {
 	}
 
 	ChatHistory struct {
-		ChatID      func(childComplexity int) int
-		CreatedAt   func(childComplexity int) int
-		ID          func(childComplexity int) int
-		MessageText func(childComplexity int) int
-		Type        func(childComplexity int) int
-		UserID      func(childComplexity int) int
+		ChatID            func(childComplexity int) int
+		CreatedAt         func(childComplexity int) int
+		Emotion           func(childComplexity int) int
+		EmotionConfidence func(childComplexity int) int
+		EmotionLabel      func(childComplexity int) int
+		ID                func(childComplexity int) int
+		MessageText       func(childComplexity int) int
+		Type              func(childComplexity int) int
+		UserID            func(childComplexity int) int
 	}
 
 	Diary struct {
@@ -76,10 +77,25 @@ type ComplexityRoot struct {
 		UserID    func(childComplexity int) int
 	}
 
+	HealthData struct {
+		CreatedAt         func(childComplexity int) int
+		Emotion           func(childComplexity int) int
+		EmotionConfidence func(childComplexity int) int
+		EmotionLabel      func(childComplexity int) int
+		HeartRate         func(childComplexity int) int
+		ID                func(childComplexity int) int
+		Pnn50             func(childComplexity int) int
+		Rmssd             func(childComplexity int) int
+		Sdnn              func(childComplexity int) int
+		Timestamp         func(childComplexity int) int
+		UserID            func(childComplexity int) int
+	}
+
 	Mutation struct {
 		AddUserToChat      func(childComplexity int, chatID string, userID string) int
 		CreateChat         func(childComplexity int, input model.CreateChatInput) int
 		CreateChatHistory  func(childComplexity int, input model.CreateChatHistoryInput) int
+		CreateHealthData   func(childComplexity int, input model.CreateHealthDataInput) int
 		CreateUser         func(childComplexity int, input model.CreateUserInput) int
 		DeleteChat         func(childComplexity int, id string) int
 		DeleteChatHistory  func(childComplexity int, id string) int
@@ -97,6 +113,7 @@ type ComplexityRoot struct {
 		ChatHistory   func(childComplexity int, id string) int
 		Chats         func(childComplexity int, limit *int32, offset *int32) int
 		Diary         func(childComplexity int, userID string) int
+		HealthData    func(childComplexity int, userID string, startDate *time.Time, endDate *time.Time, limit *int32, offset *int32) int
 		User          func(childComplexity int, id string) int
 		Users         func(childComplexity int, limit *int32, offset *int32) int
 	}
@@ -122,6 +139,7 @@ type MutationResolver interface {
 	CreateChatHistory(ctx context.Context, input model.CreateChatHistoryInput) (*model.ChatHistory, error)
 	DeleteChatHistory(ctx context.Context, id string) (bool, error)
 	UpdateDiary(ctx context.Context, userID string, data map[string]any) (*model.Diary, error)
+	CreateHealthData(ctx context.Context, input model.CreateHealthDataInput) (*model.HealthData, error)
 }
 type QueryResolver interface {
 	User(ctx context.Context, id string) (*model.User, error)
@@ -131,6 +149,7 @@ type QueryResolver interface {
 	ChatHistory(ctx context.Context, id string) (*model.ChatHistory, error)
 	ChatHistories(ctx context.Context, chatID string, limit *int32) ([]*model.ChatHistory, error)
 	Diary(ctx context.Context, userID string) (*model.Diary, error)
+	HealthData(ctx context.Context, userID string, startDate *time.Time, endDate *time.Time, limit *int32, offset *int32) ([]*model.HealthData, error)
 }
 
 type executableSchema struct {
@@ -195,6 +214,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.ChatHistory.CreatedAt(childComplexity), true
+	case "ChatHistory.emotion":
+		if e.complexity.ChatHistory.Emotion == nil {
+			break
+		}
+
+		return e.complexity.ChatHistory.Emotion(childComplexity), true
+	case "ChatHistory.emotionConfidence":
+		if e.complexity.ChatHistory.EmotionConfidence == nil {
+			break
+		}
+
+		return e.complexity.ChatHistory.EmotionConfidence(childComplexity), true
+	case "ChatHistory.emotionLabel":
+		if e.complexity.ChatHistory.EmotionLabel == nil {
+			break
+		}
+
+		return e.complexity.ChatHistory.EmotionLabel(childComplexity), true
 	case "ChatHistory.id":
 		if e.complexity.ChatHistory.ID == nil {
 			break
@@ -257,6 +294,73 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Diary.UserID(childComplexity), true
 
+	case "HealthData.createdAt":
+		if e.complexity.HealthData.CreatedAt == nil {
+			break
+		}
+
+		return e.complexity.HealthData.CreatedAt(childComplexity), true
+	case "HealthData.emotion":
+		if e.complexity.HealthData.Emotion == nil {
+			break
+		}
+
+		return e.complexity.HealthData.Emotion(childComplexity), true
+	case "HealthData.emotionConfidence":
+		if e.complexity.HealthData.EmotionConfidence == nil {
+			break
+		}
+
+		return e.complexity.HealthData.EmotionConfidence(childComplexity), true
+	case "HealthData.emotionLabel":
+		if e.complexity.HealthData.EmotionLabel == nil {
+			break
+		}
+
+		return e.complexity.HealthData.EmotionLabel(childComplexity), true
+	case "HealthData.heartRate":
+		if e.complexity.HealthData.HeartRate == nil {
+			break
+		}
+
+		return e.complexity.HealthData.HeartRate(childComplexity), true
+	case "HealthData.id":
+		if e.complexity.HealthData.ID == nil {
+			break
+		}
+
+		return e.complexity.HealthData.ID(childComplexity), true
+	case "HealthData.pnn50":
+		if e.complexity.HealthData.Pnn50 == nil {
+			break
+		}
+
+		return e.complexity.HealthData.Pnn50(childComplexity), true
+	case "HealthData.rmssd":
+		if e.complexity.HealthData.Rmssd == nil {
+			break
+		}
+
+		return e.complexity.HealthData.Rmssd(childComplexity), true
+	case "HealthData.sdnn":
+		if e.complexity.HealthData.Sdnn == nil {
+			break
+		}
+
+		return e.complexity.HealthData.Sdnn(childComplexity), true
+	case "HealthData.timestamp":
+		if e.complexity.HealthData.Timestamp == nil {
+			break
+		}
+
+		return e.complexity.HealthData.Timestamp(childComplexity), true
+	case "HealthData.userId":
+		if e.complexity.HealthData.UserID == nil {
+			break
+		}
+
+		return e.complexity.HealthData.UserID(childComplexity), true
+
 	case "Mutation.addUserToChat":
 		if e.complexity.Mutation.AddUserToChat == nil {
 			break
@@ -290,6 +394,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.CreateChatHistory(childComplexity, args["input"].(model.CreateChatHistoryInput)), true
+	case "Mutation.createHealthData":
+		if e.complexity.Mutation.CreateHealthData == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_createHealthData_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.CreateHealthData(childComplexity, args["input"].(model.CreateHealthDataInput)), true
 	case "Mutation.createUser":
 		if e.complexity.Mutation.CreateUser == nil {
 			break
@@ -445,6 +560,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.Diary(childComplexity, args["userId"].(string)), true
+	case "Query.healthData":
+		if e.complexity.Query.HealthData == nil {
+			break
+		}
+
+		args, err := ec.field_Query_healthData_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.HealthData(childComplexity, args["userId"].(string), args["startDate"].(*time.Time), args["endDate"].(*time.Time), args["limit"].(*int32), args["offset"].(*int32)), true
 	case "Query.user":
 		if e.complexity.Query.User == nil {
 			break
@@ -503,6 +629,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
 		ec.unmarshalInputCreateChatHistoryInput,
 		ec.unmarshalInputCreateChatInput,
+		ec.unmarshalInputCreateHealthDataInput,
 		ec.unmarshalInputCreateUserInput,
 		ec.unmarshalInputLoginInput,
 		ec.unmarshalInputUpdateChatInput,
@@ -654,6 +781,17 @@ func (ec *executionContext) field_Mutation_createChat_args(ctx context.Context, 
 	var err error
 	args := map[string]any{}
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNCreateChatInput2metachatᚋinternalᚋgraphqlᚋgraphᚋmodelᚐCreateChatInput)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_createHealthData_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNCreateHealthDataInput2metachatᚋinternalᚋgraphqlᚋgraphᚋmodelᚐCreateHealthDataInput)
 	if err != nil {
 		return nil, err
 	}
@@ -843,6 +981,37 @@ func (ec *executionContext) field_Query_diary_args(ctx context.Context, rawArgs 
 		return nil, err
 	}
 	args["userId"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_healthData_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "userId", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["userId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "startDate", ec.unmarshalOTime2ᚖtimeᚐTime)
+	if err != nil {
+		return nil, err
+	}
+	args["startDate"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "endDate", ec.unmarshalOTime2ᚖtimeᚐTime)
+	if err != nil {
+		return nil, err
+	}
+	args["endDate"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "limit", ec.unmarshalOInt2ᚖint32)
+	if err != nil {
+		return nil, err
+	}
+	args["limit"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "offset", ec.unmarshalOInt2ᚖint32)
+	if err != nil {
+		return nil, err
+	}
+	args["offset"] = arg4
 	return args, nil
 }
 
@@ -1225,6 +1394,93 @@ func (ec *executionContext) fieldContext_ChatHistory_type(_ context.Context, fie
 	return fc, nil
 }
 
+func (ec *executionContext) _ChatHistory_emotion(ctx context.Context, field graphql.CollectedField, obj *model.ChatHistory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ChatHistory_emotion,
+		func(ctx context.Context) (any, error) {
+			return obj.Emotion, nil
+		},
+		nil,
+		ec.marshalOInt2ᚖint32,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ChatHistory_emotion(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ChatHistory",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ChatHistory_emotionLabel(ctx context.Context, field graphql.CollectedField, obj *model.ChatHistory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ChatHistory_emotionLabel,
+		func(ctx context.Context) (any, error) {
+			return obj.EmotionLabel, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ChatHistory_emotionLabel(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ChatHistory",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ChatHistory_emotionConfidence(ctx context.Context, field graphql.CollectedField, obj *model.ChatHistory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ChatHistory_emotionConfidence,
+		func(ctx context.Context) (any, error) {
+			return obj.EmotionConfidence, nil
+		},
+		nil,
+		ec.marshalOFloat2ᚖfloat64,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ChatHistory_emotionConfidence(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ChatHistory",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Float does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _ChatHistory_createdAt(ctx context.Context, field graphql.CollectedField, obj *model.ChatHistory) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1418,6 +1674,325 @@ func (ec *executionContext) _Diary_updatedAt(ctx context.Context, field graphql.
 func (ec *executionContext) fieldContext_Diary_updatedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Diary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HealthData_id(ctx context.Context, field graphql.CollectedField, obj *model.HealthData) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_HealthData_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_HealthData_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HealthData",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HealthData_userId(ctx context.Context, field graphql.CollectedField, obj *model.HealthData) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_HealthData_userId,
+		func(ctx context.Context) (any, error) {
+			return obj.UserID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_HealthData_userId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HealthData",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HealthData_heartRate(ctx context.Context, field graphql.CollectedField, obj *model.HealthData) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_HealthData_heartRate,
+		func(ctx context.Context) (any, error) {
+			return obj.HeartRate, nil
+		},
+		nil,
+		ec.marshalOFloat2ᚖfloat64,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_HealthData_heartRate(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HealthData",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Float does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HealthData_sdnn(ctx context.Context, field graphql.CollectedField, obj *model.HealthData) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_HealthData_sdnn,
+		func(ctx context.Context) (any, error) {
+			return obj.Sdnn, nil
+		},
+		nil,
+		ec.marshalOFloat2ᚖfloat64,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_HealthData_sdnn(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HealthData",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Float does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HealthData_rmssd(ctx context.Context, field graphql.CollectedField, obj *model.HealthData) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_HealthData_rmssd,
+		func(ctx context.Context) (any, error) {
+			return obj.Rmssd, nil
+		},
+		nil,
+		ec.marshalOFloat2ᚖfloat64,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_HealthData_rmssd(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HealthData",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Float does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HealthData_pnn50(ctx context.Context, field graphql.CollectedField, obj *model.HealthData) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_HealthData_pnn50,
+		func(ctx context.Context) (any, error) {
+			return obj.Pnn50, nil
+		},
+		nil,
+		ec.marshalOFloat2ᚖfloat64,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_HealthData_pnn50(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HealthData",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Float does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HealthData_emotion(ctx context.Context, field graphql.CollectedField, obj *model.HealthData) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_HealthData_emotion,
+		func(ctx context.Context) (any, error) {
+			return obj.Emotion, nil
+		},
+		nil,
+		ec.marshalOInt2ᚖint32,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_HealthData_emotion(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HealthData",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HealthData_emotionLabel(ctx context.Context, field graphql.CollectedField, obj *model.HealthData) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_HealthData_emotionLabel,
+		func(ctx context.Context) (any, error) {
+			return obj.EmotionLabel, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_HealthData_emotionLabel(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HealthData",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HealthData_emotionConfidence(ctx context.Context, field graphql.CollectedField, obj *model.HealthData) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_HealthData_emotionConfidence,
+		func(ctx context.Context) (any, error) {
+			return obj.EmotionConfidence, nil
+		},
+		nil,
+		ec.marshalOFloat2ᚖfloat64,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_HealthData_emotionConfidence(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HealthData",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Float does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HealthData_timestamp(ctx context.Context, field graphql.CollectedField, obj *model.HealthData) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_HealthData_timestamp,
+		func(ctx context.Context) (any, error) {
+			return obj.Timestamp, nil
+		},
+		nil,
+		ec.marshalNTime2timeᚐTime,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_HealthData_timestamp(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HealthData",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HealthData_createdAt(ctx context.Context, field graphql.CollectedField, obj *model.HealthData) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_HealthData_createdAt,
+		func(ctx context.Context) (any, error) {
+			return obj.CreatedAt, nil
+		},
+		nil,
+		ec.marshalNTime2timeᚐTime,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_HealthData_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HealthData",
 		Field:      field,
 		IsMethod:   false,
 		IsResolver: false,
@@ -1900,6 +2475,12 @@ func (ec *executionContext) fieldContext_Mutation_createChatHistory(ctx context.
 				return ec.fieldContext_ChatHistory_messageText(ctx, field)
 			case "type":
 				return ec.fieldContext_ChatHistory_type(ctx, field)
+			case "emotion":
+				return ec.fieldContext_ChatHistory_emotion(ctx, field)
+			case "emotionLabel":
+				return ec.fieldContext_ChatHistory_emotionLabel(ctx, field)
+			case "emotionConfidence":
+				return ec.fieldContext_ChatHistory_emotionConfidence(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_ChatHistory_createdAt(ctx, field)
 			}
@@ -2010,6 +2591,71 @@ func (ec *executionContext) fieldContext_Mutation_updateDiary(ctx context.Contex
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_updateDiary_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createHealthData(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_createHealthData,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().CreateHealthData(ctx, fc.Args["input"].(model.CreateHealthDataInput))
+		},
+		nil,
+		ec.marshalNHealthData2ᚖmetachatᚋinternalᚋgraphqlᚋgraphᚋmodelᚐHealthData,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_createHealthData(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_HealthData_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_HealthData_userId(ctx, field)
+			case "heartRate":
+				return ec.fieldContext_HealthData_heartRate(ctx, field)
+			case "sdnn":
+				return ec.fieldContext_HealthData_sdnn(ctx, field)
+			case "rmssd":
+				return ec.fieldContext_HealthData_rmssd(ctx, field)
+			case "pnn50":
+				return ec.fieldContext_HealthData_pnn50(ctx, field)
+			case "emotion":
+				return ec.fieldContext_HealthData_emotion(ctx, field)
+			case "emotionLabel":
+				return ec.fieldContext_HealthData_emotionLabel(ctx, field)
+			case "emotionConfidence":
+				return ec.fieldContext_HealthData_emotionConfidence(ctx, field)
+			case "timestamp":
+				return ec.fieldContext_HealthData_timestamp(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_HealthData_createdAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type HealthData", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createHealthData_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -2259,6 +2905,12 @@ func (ec *executionContext) fieldContext_Query_chatHistory(ctx context.Context, 
 				return ec.fieldContext_ChatHistory_messageText(ctx, field)
 			case "type":
 				return ec.fieldContext_ChatHistory_type(ctx, field)
+			case "emotion":
+				return ec.fieldContext_ChatHistory_emotion(ctx, field)
+			case "emotionLabel":
+				return ec.fieldContext_ChatHistory_emotionLabel(ctx, field)
+			case "emotionConfidence":
+				return ec.fieldContext_ChatHistory_emotionConfidence(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_ChatHistory_createdAt(ctx, field)
 			}
@@ -2314,6 +2966,12 @@ func (ec *executionContext) fieldContext_Query_chatHistories(ctx context.Context
 				return ec.fieldContext_ChatHistory_messageText(ctx, field)
 			case "type":
 				return ec.fieldContext_ChatHistory_type(ctx, field)
+			case "emotion":
+				return ec.fieldContext_ChatHistory_emotion(ctx, field)
+			case "emotionLabel":
+				return ec.fieldContext_ChatHistory_emotionLabel(ctx, field)
+			case "emotionConfidence":
+				return ec.fieldContext_ChatHistory_emotionConfidence(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_ChatHistory_createdAt(ctx, field)
 			}
@@ -2383,6 +3041,71 @@ func (ec *executionContext) fieldContext_Query_diary(ctx context.Context, field 
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_diary_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_healthData(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_healthData,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().HealthData(ctx, fc.Args["userId"].(string), fc.Args["startDate"].(*time.Time), fc.Args["endDate"].(*time.Time), fc.Args["limit"].(*int32), fc.Args["offset"].(*int32))
+		},
+		nil,
+		ec.marshalNHealthData2ᚕᚖmetachatᚋinternalᚋgraphqlᚋgraphᚋmodelᚐHealthDataᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_healthData(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_HealthData_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_HealthData_userId(ctx, field)
+			case "heartRate":
+				return ec.fieldContext_HealthData_heartRate(ctx, field)
+			case "sdnn":
+				return ec.fieldContext_HealthData_sdnn(ctx, field)
+			case "rmssd":
+				return ec.fieldContext_HealthData_rmssd(ctx, field)
+			case "pnn50":
+				return ec.fieldContext_HealthData_pnn50(ctx, field)
+			case "emotion":
+				return ec.fieldContext_HealthData_emotion(ctx, field)
+			case "emotionLabel":
+				return ec.fieldContext_HealthData_emotionLabel(ctx, field)
+			case "emotionConfidence":
+				return ec.fieldContext_HealthData_emotionConfidence(ctx, field)
+			case "timestamp":
+				return ec.fieldContext_HealthData_timestamp(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_HealthData_createdAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type HealthData", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_healthData_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -4141,6 +4864,61 @@ func (ec *executionContext) unmarshalInputCreateChatInput(ctx context.Context, o
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputCreateHealthDataInput(ctx context.Context, obj any) (model.CreateHealthDataInput, error) {
+	var it model.CreateHealthDataInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"heartRate", "sdnn", "rmssd", "pnn50", "timestamp"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "heartRate":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("heartRate"))
+			data, err := ec.unmarshalOFloat2ᚖfloat64(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.HeartRate = data
+		case "sdnn":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sdnn"))
+			data, err := ec.unmarshalOFloat2ᚖfloat64(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Sdnn = data
+		case "rmssd":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("rmssd"))
+			data, err := ec.unmarshalOFloat2ᚖfloat64(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Rmssd = data
+		case "pnn50":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("pnn50"))
+			data, err := ec.unmarshalOFloat2ᚖfloat64(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Pnn50 = data
+		case "timestamp":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("timestamp"))
+			data, err := ec.unmarshalNTime2timeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Timestamp = data
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputCreateUserInput(ctx context.Context, obj any) (model.CreateUserInput, error) {
 	var it model.CreateUserInput
 	asMap := map[string]any{}
@@ -4394,6 +5172,12 @@ func (ec *executionContext) _ChatHistory(ctx context.Context, sel ast.SelectionS
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "emotion":
+			out.Values[i] = ec._ChatHistory_emotion(ctx, field, obj)
+		case "emotionLabel":
+			out.Values[i] = ec._ChatHistory_emotionLabel(ctx, field, obj)
+		case "emotionConfidence":
+			out.Values[i] = ec._ChatHistory_emotionConfidence(ctx, field, obj)
 		case "createdAt":
 			out.Values[i] = ec._ChatHistory_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -4460,6 +5244,74 @@ func (ec *executionContext) _Diary(ctx context.Context, sel ast.SelectionSet, ob
 			}
 		case "updatedAt":
 			out.Values[i] = ec._Diary_updatedAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var healthDataImplementors = []string{"HealthData"}
+
+func (ec *executionContext) _HealthData(ctx context.Context, sel ast.SelectionSet, obj *model.HealthData) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, healthDataImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("HealthData")
+		case "id":
+			out.Values[i] = ec._HealthData_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "userId":
+			out.Values[i] = ec._HealthData_userId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "heartRate":
+			out.Values[i] = ec._HealthData_heartRate(ctx, field, obj)
+		case "sdnn":
+			out.Values[i] = ec._HealthData_sdnn(ctx, field, obj)
+		case "rmssd":
+			out.Values[i] = ec._HealthData_rmssd(ctx, field, obj)
+		case "pnn50":
+			out.Values[i] = ec._HealthData_pnn50(ctx, field, obj)
+		case "emotion":
+			out.Values[i] = ec._HealthData_emotion(ctx, field, obj)
+		case "emotionLabel":
+			out.Values[i] = ec._HealthData_emotionLabel(ctx, field, obj)
+		case "emotionConfidence":
+			out.Values[i] = ec._HealthData_emotionConfidence(ctx, field, obj)
+		case "timestamp":
+			out.Values[i] = ec._HealthData_timestamp(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createdAt":
+			out.Values[i] = ec._HealthData_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -4585,6 +5437,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "updateDiary":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_updateDiary(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createHealthData":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createHealthData(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -4764,6 +5623,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_diary(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "healthData":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_healthData(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
 				return res
 			}
 
@@ -5335,6 +6216,11 @@ func (ec *executionContext) unmarshalNCreateChatInput2metachatᚋinternalᚋgrap
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) unmarshalNCreateHealthDataInput2metachatᚋinternalᚋgraphqlᚋgraphᚋmodelᚐCreateHealthDataInput(ctx context.Context, v any) (model.CreateHealthDataInput, error) {
+	res, err := ec.unmarshalInputCreateHealthDataInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalNCreateUserInput2metachatᚋinternalᚋgraphqlᚋgraphᚋmodelᚐCreateUserInput(ctx context.Context, v any) (model.CreateUserInput, error) {
 	res, err := ec.unmarshalInputCreateUserInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -5352,6 +6238,64 @@ func (ec *executionContext) marshalNDiary2ᚖmetachatᚋinternalᚋgraphqlᚋgra
 		return graphql.Null
 	}
 	return ec._Diary(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNHealthData2metachatᚋinternalᚋgraphqlᚋgraphᚋmodelᚐHealthData(ctx context.Context, sel ast.SelectionSet, v model.HealthData) graphql.Marshaler {
+	return ec._HealthData(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNHealthData2ᚕᚖmetachatᚋinternalᚋgraphqlᚋgraphᚋmodelᚐHealthDataᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.HealthData) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNHealthData2ᚖmetachatᚋinternalᚋgraphqlᚋgraphᚋmodelᚐHealthData(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNHealthData2ᚖmetachatᚋinternalᚋgraphqlᚋgraphᚋmodelᚐHealthData(ctx context.Context, sel ast.SelectionSet, v *model.HealthData) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._HealthData(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNID2string(ctx context.Context, v any) (string, error) {
@@ -5400,27 +6344,6 @@ func (ec *executionContext) marshalNID2ᚕstringᚄ(ctx context.Context, sel ast
 	return ret
 }
 
-func (ec *executionContext) unmarshalInputJSON(ctx context.Context, v any) (map[string]any, error) {
-	if v == nil {
-		return nil, nil
-	}
-	res, ok := v.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("%T is not a map[string]any", v)
-	}
-	return res, nil
-}
-
-func (ec *executionContext) _JSON(ctx context.Context, sel ast.SelectionSet, obj map[string]any) graphql.Marshaler {
-	return graphql.WriterFunc(func(w io.Writer) {
-		jsonBytes, err := json.Marshal(obj)
-		if err != nil {
-			panic(err)
-		}
-		w.Write(jsonBytes)
-	})
-}
-
 func (ec *executionContext) unmarshalNJSON2map(ctx context.Context, v any) (map[string]any, error) {
 	res, err := ec.unmarshalInputJSON(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -5458,19 +6381,12 @@ func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.S
 }
 
 func (ec *executionContext) unmarshalNTime2timeᚐTime(ctx context.Context, v any) (time.Time, error) {
-	res, err := graphql.UnmarshalTime(v)
+	res, err := ec.unmarshalInputTime(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalNTime2timeᚐTime(ctx context.Context, sel ast.SelectionSet, v time.Time) graphql.Marshaler {
-	_ = sel
-	res := graphql.MarshalTime(v)
-	if res == graphql.Null {
-		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
-		}
-	}
-	return res
+	return ec._Time(ctx, sel, &v)
 }
 
 func (ec *executionContext) unmarshalNUpdateChatInput2metachatᚋinternalᚋgraphqlᚋgraphᚋmodelᚐUpdateChatInput(ctx context.Context, v any) (model.UpdateChatInput, error) {
@@ -5845,6 +6761,23 @@ func (ec *executionContext) marshalODiary2ᚖmetachatᚋinternalᚋgraphqlᚋgra
 	return ec._Diary(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalOFloat2ᚖfloat64(ctx context.Context, v any) (*float64, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalFloatContext(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOFloat2ᚖfloat64(ctx context.Context, sel ast.SelectionSet, v *float64) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	_ = sel
+	res := graphql.MarshalFloatContext(*v)
+	return graphql.WrapContextMarshaler(ctx, res)
+}
+
 func (ec *executionContext) unmarshalOID2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {
 	if v == nil {
 		return nil, nil
@@ -5915,6 +6848,21 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	_ = ctx
 	res := graphql.MarshalString(*v)
 	return res
+}
+
+func (ec *executionContext) unmarshalOTime2ᚖtimeᚐTime(ctx context.Context, v any) (*time.Time, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputTime(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOTime2ᚖtimeᚐTime(ctx context.Context, sel ast.SelectionSet, v *time.Time) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Time(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOUser2ᚖmetachatᚋinternalᚋgraphqlᚋgraphᚋmodelᚐUser(ctx context.Context, sel ast.SelectionSet, v *model.User) graphql.Marshaler {

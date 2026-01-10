@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>kgz.ai-diary</string>
+	<key>CFBundleName</key>
+	<string>ai-diary</string>
+	<key>CFBundleExecutable</key>
+	<string>ai-diary</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Приложению нужен доступ к данным о здоровье для отображения пульса и вариабельности сердечного ритма</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Приложению нужен доступ для записи данных о здоровье</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>background-processing</string>
+		<string>background-fetch</string>
+		<string>healthkit</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.metachat.healthDataSync</string>
+	</array>
+</dict>
+</plist>
+

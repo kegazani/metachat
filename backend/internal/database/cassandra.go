@@ -38,6 +38,10 @@ func InitCassandra(cfg *config.Config) error {
 		return fmt.Errorf("failed to create chat_history table: %w", err)
 	}
 
+	if err := createHealthDataTable(cfg); err != nil {
+		return fmt.Errorf("failed to create health_data table: %w", err)
+	}
+
 	log.Println("Successfully connected to Cassandra")
 	return nil
 }
@@ -100,10 +104,68 @@ func createChatHistoryTable(cfg *config.Config) error {
 		log.Printf("Warning: failed to add type column (may already exist): %v", err)
 	}
 
+	alterTableQuery2 := `ALTER TABLE chat_history ADD IF NOT EXISTS emotion INT`
+	if err := CassandraSession.Query(alterTableQuery2).Exec(); err != nil {
+		log.Printf("Warning: failed to add emotion column (may already exist): %v", err)
+	}
+
+	alterTableQuery3 := `ALTER TABLE chat_history ADD IF NOT EXISTS emotion_label TEXT`
+	if err := CassandraSession.Query(alterTableQuery3).Exec(); err != nil {
+		log.Printf("Warning: failed to add emotion_label column (may already exist): %v", err)
+	}
+
+	alterTableQuery4 := `ALTER TABLE chat_history ADD IF NOT EXISTS emotion_confidence DOUBLE`
+	if err := CassandraSession.Query(alterTableQuery4).Exec(); err != nil {
+		log.Printf("Warning: failed to add emotion_confidence column (may already exist): %v", err)
+	}
+
 	createIndexQuery := `CREATE INDEX IF NOT EXISTS ON chat_history (chat_id)`
 
 	if err := CassandraSession.Query(createIndexQuery).Exec(); err != nil {
 		return fmt.Errorf("failed to create index on chat_id: %w", err)
+	}
+
+	return nil
+}
+
+func createHealthDataTable(cfg *config.Config) error {
+	createTableQuery := `
+		CREATE TABLE IF NOT EXISTS health_data (
+			id UUID PRIMARY KEY,
+			user_id INT,
+			timestamp BIGINT,
+			heart_rate DOUBLE,
+			sdnn DOUBLE,
+			rmssd DOUBLE,
+			pnn50 DOUBLE,
+			created_at BIGINT
+		)
+	`
+
+	if err := CassandraSession.Query(createTableQuery).Exec(); err != nil {
+		return fmt.Errorf("failed to create health_data table: %w", err)
+	}
+
+	alterTableQuery := `ALTER TABLE health_data ADD IF NOT EXISTS emotion INT`
+
+	if err := CassandraSession.Query(alterTableQuery).Exec(); err != nil {
+		log.Printf("Warning: failed to add emotion column (may already exist): %v", err)
+	}
+
+	alterTableQuery2 := `ALTER TABLE health_data ADD IF NOT EXISTS emotion_label TEXT`
+	if err := CassandraSession.Query(alterTableQuery2).Exec(); err != nil {
+		log.Printf("Warning: failed to add emotion_label column (may already exist): %v", err)
+	}
+
+	alterTableQuery3 := `ALTER TABLE health_data ADD IF NOT EXISTS emotion_confidence DOUBLE`
+	if err := CassandraSession.Query(alterTableQuery3).Exec(); err != nil {
+		log.Printf("Warning: failed to add emotion_confidence column (may already exist): %v", err)
+	}
+
+	createIndexQuery := `CREATE INDEX IF NOT EXISTS ON health_data (user_id)`
+
+	if err := CassandraSession.Query(createIndexQuery).Exec(); err != nil {
+		return fmt.Errorf("failed to create index on user_id: %w", err)
 	}
 
 	return nil

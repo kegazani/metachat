@@ -143,6 +143,9 @@ models:
   JSON:
     model:
       - map[string]interface{}
+  Time:
+    model:
+      - time.Time
 
   # The GraphQL spec explicitly states that the Int type is a signed 32-bit
   # integer. Using Go int or int64 to represent it can lead to unexpected

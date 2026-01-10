@@ -16,6 +16,7 @@ import (
 	"metachat/internal/kafka"
 	"metachat/internal/models"
 	"metachat/internal/repository"
+	"metachat/internal/services"
 )
 
 func main() {
@@ -42,7 +43,10 @@ func main() {
 	chatRepo := repository.NewChatRepository()
 	chatHistoryRepo := repository.NewChatHistoryRepository()
 	diaryRepo := repository.NewDiaryRepository()
-	resolver := graphql.NewResolverWithRepos(userRepo, chatRepo, chatHistoryRepo, diaryRepo)
+	healthDataRepo := repository.NewHealthDataRepository()
+	aiService := services.NewAIService(cfg.AI.URL)
+	log.Printf("AI Service URL: %s", cfg.AI.URL)
+	resolver := graphql.NewResolverWithRepos(userRepo, chatRepo, chatHistoryRepo, diaryRepo, healthDataRepo, aiService)
 
 	graphqlHandler := graphql.NewGraphQLHandler(resolver)
 	playgroundHandler := graphql.NewPlaygroundHandler()

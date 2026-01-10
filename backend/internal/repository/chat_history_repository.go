@@ -32,18 +32,22 @@ func (r *ChatHistoryRepository) Create(history *models.ChatHistory) error {
 		history.Type = "normal"
 	}
 
-	query := `INSERT INTO chat_history (id, chat_id, user_id, message_text, type, created_at) VALUES (?, ?, ?, ?, ?, ?)`
-	return database.CassandraSession.Query(query, uuidToGocqlUUID(history.ID), uuidToGocqlUUID(history.ChatID), history.UserID, history.MessageText, history.Type, history.CreatedAt).Exec()
+	query := `INSERT INTO chat_history (id, chat_id, user_id, message_text, type, emotion, emotion_label, emotion_confidence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	return database.CassandraSession.Query(query, uuidToGocqlUUID(history.ID), uuidToGocqlUUID(history.ChatID), history.UserID, history.MessageText, history.Type, history.Emotion, history.EmotionLabel, history.EmotionConfidence, history.CreatedAt).Exec()
 }
 
 func (r *ChatHistoryRepository) GetByID(id uuid.UUID) (*models.ChatHistory, error) {
 	var history models.ChatHistory
 	var gocqlID, gocqlChatID gocql.UUID
-	query := `SELECT id, chat_id, user_id, message_text, type, created_at FROM chat_history WHERE id = ? LIMIT 1`
+	query := `SELECT id, chat_id, user_id, message_text, type, emotion, emotion_label, emotion_confidence, created_at FROM chat_history WHERE id = ? LIMIT 1`
 
 	iter := database.CassandraSession.Query(query, uuidToGocqlUUID(id)).Iter()
 
-	if !iter.Scan(&gocqlID, &gocqlChatID, &history.UserID, &history.MessageText, &history.Type, &history.CreatedAt) {
+	var emotion *int
+	var emotionLabel *string
+	var emotionConfidence *float64
+
+	if !iter.Scan(&gocqlID, &gocqlChatID, &history.UserID, &history.MessageText, &history.Type, &emotion, &emotionLabel, &emotionConfidence, &history.CreatedAt) {
 		iter.Close()
 		return nil, gocql.ErrNotFound
 	}
@@ -53,6 +57,9 @@ func (r *ChatHistoryRepository) GetByID(id uuid.UUID) (*models.ChatHistory, erro
 	if history.Type == "" {
 		history.Type = "normal"
 	}
+	history.Emotion = emotion
+	history.EmotionLabel = emotionLabel
+	history.EmotionConfidence = emotionConfidence
 
 	if err := iter.Close(); err != nil {
 		return nil, err
@@ -63,18 +70,24 @@ func (r *ChatHistoryRepository) GetByID(id uuid.UUID) (*models.ChatHistory, erro
 
 func (r *ChatHistoryRepository) GetByChatID(chatID uuid.UUID, limit int) ([]models.ChatHistory, error) {
 	var histories []models.ChatHistory
-	query := `SELECT id, chat_id, user_id, message_text, type, created_at FROM chat_history WHERE chat_id = ? LIMIT ?`
+	query := `SELECT id, chat_id, user_id, message_text, type, emotion, emotion_label, emotion_confidence, created_at FROM chat_history WHERE chat_id = ? LIMIT ?`
 
 	iter := database.CassandraSession.Query(query, uuidToGocqlUUID(chatID), limit).Iter()
 
 	var history models.ChatHistory
 	var gocqlID, gocqlChatID gocql.UUID
-	for iter.Scan(&gocqlID, &gocqlChatID, &history.UserID, &history.MessageText, &history.Type, &history.CreatedAt) {
+	var emotion *int
+	var emotionLabel *string
+	var emotionConfidence *float64
+	for iter.Scan(&gocqlID, &gocqlChatID, &history.UserID, &history.MessageText, &history.Type, &emotion, &emotionLabel, &emotionConfidence, &history.CreatedAt) {
 		history.ID, _ = uuid.FromBytes(gocqlID.Bytes())
 		history.ChatID, _ = uuid.FromBytes(gocqlChatID.Bytes())
 		if history.Type == "" {
 			history.Type = "normal"
 		}
+		history.Emotion = emotion
+		history.EmotionLabel = emotionLabel
+		history.EmotionConfidence = emotionConfidence
 		histories = append(histories, history)
 	}
 
@@ -87,18 +100,24 @@ func (r *ChatHistoryRepository) GetByChatID(chatID uuid.UUID, limit int) ([]mode
 
 func (r *ChatHistoryRepository) GetByChatIDAndType(chatID uuid.UUID, messageType string, limit int) ([]models.ChatHistory, error) {
 	var histories []models.ChatHistory
-	query := `SELECT id, chat_id, user_id, message_text, type, created_at FROM chat_history WHERE chat_id = ? AND type = ? LIMIT ?`
+	query := `SELECT id, chat_id, user_id, message_text, type, emotion, emotion_label, emotion_confidence, created_at FROM chat_history WHERE chat_id = ? AND type = ? LIMIT ?`
 
 	iter := database.CassandraSession.Query(query, uuidToGocqlUUID(chatID), messageType, limit).Iter()
 
 	var history models.ChatHistory
 	var gocqlID, gocqlChatID gocql.UUID
-	for iter.Scan(&gocqlID, &gocqlChatID, &history.UserID, &history.MessageText, &history.Type, &history.CreatedAt) {
+	var emotion *int
+	var emotionLabel *string
+	var emotionConfidence *float64
+	for iter.Scan(&gocqlID, &gocqlChatID, &history.UserID, &history.MessageText, &history.Type, &emotion, &emotionLabel, &emotionConfidence, &history.CreatedAt) {
 		history.ID, _ = uuid.FromBytes(gocqlID.Bytes())
 		history.ChatID, _ = uuid.FromBytes(gocqlChatID.Bytes())
 		if history.Type == "" {
 			history.Type = "normal"
 		}
+		history.Emotion = emotion
+		history.EmotionLabel = emotionLabel
+		history.EmotionConfidence = emotionConfidence
 		histories = append(histories, history)
 	}
 

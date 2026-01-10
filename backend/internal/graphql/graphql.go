@@ -7,6 +7,7 @@ import (
 
 	"metachat/internal/graphql/graph"
 	"metachat/internal/repository"
+	"metachat/internal/services"
 	"metachat/pkg/utils"
 
 	"github.com/99designs/gqlgen/graphql"
@@ -35,12 +36,14 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func NewResolverWithRepos(userRepo *repository.UserRepository, chatRepo *repository.ChatRepository, chatHistoryRepo *repository.ChatHistoryRepository, diaryRepo *repository.DiaryRepository) *graph.Resolver {
+func NewResolverWithRepos(userRepo *repository.UserRepository, chatRepo *repository.ChatRepository, chatHistoryRepo *repository.ChatHistoryRepository, diaryRepo *repository.DiaryRepository, healthDataRepo *repository.HealthDataRepository, aiService *services.AIService) *graph.Resolver {
 	return &graph.Resolver{
 		UserRepo:        userRepo,
 		ChatRepo:        chatRepo,
 		ChatHistoryRepo: chatHistoryRepo,
 		DiaryRepo:       diaryRepo,
+		HealthDataRepo:  healthDataRepo,
+		AIService:       aiService,
 	}
 }
 
@@ -74,9 +77,6 @@ func NewGraphQLHandler(resolver *graph.Resolver) http.Handler {
 	srv.SetQueryCache(lru.New[*ast.QueryDocument](1000))
 
 	srv.Use(extension.Introspection{})
-	srv.Use(extension.AutomaticPersistedQuery{
-		Cache: lru.New[string](100),
-	})
 
 	srv.AroundOperations(func(ctx context.Context, next graphql.OperationHandler) graphql.ResponseHandler {
 		opCtx := graphql.GetOperationContext(ctx)
