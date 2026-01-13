@@ -84,29 +84,84 @@ class HealthStatisticsService {
         ]
         
         if let startDate = startDate {
-            variables["startDate"] = formatter.string(from: startDate)
+            let startDateString = formatter.string(from: startDate)
+            variables["startDate"] = startDateString
+            print("📅 HealthData query - startDate: \(startDateString)")
         }
         
         if let endDate = endDate {
-            variables["endDate"] = formatter.string(from: endDate)
+            let endDateString = formatter.string(from: endDate)
+            variables["endDate"] = endDateString
+            print("📅 HealthData query - endDate: \(endDateString)")
         }
+        
+        print("🔍 HealthData query - userId: \(userId), limit: \(limit)")
         
         let json = try await performRequest(query: query, variables: variables)
         
-        guard let data = json["data"] as? [String: Any],
-              let healthDataArray = data["healthData"] as? [[String: Any]] else {
+        print("📦 HealthData response received")
+        
+        if let errors = json["errors"] as? [[String: Any]] {
+            for error in errors {
+                if let message = error["message"] as? String {
+                    print("❌ HealthData GraphQL error: \(message)")
+                }
+            }
+            if let errorMessage = errors.first?["message"] as? String {
+                throw ServiceError.serverError(errorMessage)
+            }
+        }
+        
+        guard let data = json["data"] as? [String: Any] else {
+            print("❌ HealthData: No 'data' field in response")
+            print("📦 Response: \(json)")
             throw ServiceError.invalidResponse
         }
         
+        guard let healthDataArray = data["healthData"] as? [[String: Any]] else {
+            print("❌ HealthData: No 'healthData' array in response")
+            print("📦 Data: \(data)")
+            throw ServiceError.invalidResponse
+        }
+        
+        print("✅ HealthData: Found \(healthDataArray.count) records")
+        
+        let formatterWithoutFractional = ISO8601DateFormatter()
+        formatterWithoutFractional.formatOptions = [.withInternetDateTime]
+        
         return healthDataArray.compactMap { dict in
-            guard let id = dict["id"] as? String,
-                  let timestampString = dict["timestamp"] as? String,
-                  let timestamp = formatter.date(from: timestampString) else {
+            guard let id = dict["id"] as? String else {
+                print("⚠️ HealthData: Missing id in record")
+                return nil
+            }
+            
+            guard let timestampString = dict["timestamp"] as? String else {
+                print("⚠️ HealthData: Missing timestamp in record id=\(id)")
+                return nil
+            }
+            
+            var timestamp: Date?
+            timestamp = formatter.date(from: timestampString)
+            if timestamp == nil {
+                timestamp = formatterWithoutFractional.date(from: timestampString)
+            }
+            if timestamp == nil {
+                let rfc3339Formatter = DateFormatter()
+                rfc3339Formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+                timestamp = rfc3339Formatter.date(from: timestampString)
+            }
+            
+            guard let timestamp = timestamp else {
+                print("⚠️ HealthData: Failed to parse timestamp '\(timestampString)' for id=\(id)")
                 return nil
             }
             
             let heartRate = dict["heartRate"] as? Double
             let sdnn = dict["sdnn"] as? Double
+            
+            if heartRate != nil || sdnn != nil {
+                print("📊 HealthData point: id=\(id), heartRate=\(heartRate ?? 0), sdnn=\(sdnn ?? 0), timestamp=\(timestamp)")
+            }
             
             return HealthDataPoint(
                 id: id,

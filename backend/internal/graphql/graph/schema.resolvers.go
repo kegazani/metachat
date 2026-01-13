@@ -636,6 +636,8 @@ func (r *queryResolver) Diary(ctx context.Context, userID string) (*model.Diary,
 
 // HealthData is the resolver for the healthData field.
 func (r *queryResolver) HealthData(ctx context.Context, userID string, startDate *time.Time, endDate *time.Time, limit *int32, offset *int32) ([]*model.HealthData, error) {
+	fmt.Printf("HealthData query: userID=%s, startDate=%v, endDate=%v, limit=%v, offset=%v\n", userID, startDate, endDate, limit, offset)
+	
 	userIDUint, err := strconv.ParseUint(userID, 10, 32)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)
@@ -654,14 +656,19 @@ func (r *queryResolver) HealthData(ctx context.Context, userID string, startDate
 
 	var healthDataList []models.HealthData
 	if startDate != nil || endDate != nil {
+		fmt.Printf("Fetching health data with date range for user %d\n", userIDInt)
 		healthDataList, err = r.HealthDataRepo.GetByUserIDAndDateRange(userIDInt, startDate, endDate, limitInt, offsetInt)
 	} else {
+		fmt.Printf("Fetching all health data for user %d\n", userIDInt)
 		healthDataList, err = r.HealthDataRepo.GetByUserID(userIDInt, limitInt, offsetInt)
 	}
 
 	if err != nil {
+		fmt.Printf("Error fetching health data: %v\n", err)
 		return nil, fmt.Errorf("failed to get health data: %w", err)
 	}
+
+	fmt.Printf("Found %d health data records\n", len(healthDataList))
 
 	result := make([]*model.HealthData, len(healthDataList))
 	for i, h := range healthDataList {
@@ -686,6 +693,7 @@ func (r *queryResolver) HealthData(ctx context.Context, userID string, startDate
 		}
 	}
 
+	fmt.Printf("Returning %d health data records\n", len(result))
 	return result, nil
 }
 
