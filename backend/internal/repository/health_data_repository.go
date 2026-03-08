@@ -101,6 +101,20 @@ func (r *HealthDataRepository) GetByUserID(userID uint, limit, offset int) ([]mo
 	return healthDataList, nil
 }
 
+func (r *HealthDataRepository) Update(healthData *models.HealthData) error {
+	query := `UPDATE health_data SET heart_rate = ?, sdnn = ?, rmssd = ?, pnn50 = ?, emotion = ?, emotion_label = ?, emotion_confidence = ? WHERE id = ?`
+	return database.CassandraSession.Query(query,
+		healthData.HeartRate,
+		healthData.SDNN,
+		healthData.RMSSD,
+		healthData.PNN50,
+		healthData.Emotion,
+		healthData.EmotionLabel,
+		healthData.EmotionConfidence,
+		uuidToGocqlUUID(healthData.ID),
+	).Exec()
+}
+
 func (r *HealthDataRepository) GetByUserIDAndDateRange(userID uint, startDate, endDate *time.Time, limit, offset int) ([]models.HealthData, error) {
 	var healthDataList []models.HealthData
 	var startTimestamp, endTimestamp *int64
@@ -126,14 +140,14 @@ func (r *HealthDataRepository) GetByUserIDAndDateRange(userID uint, startDate, e
 		healthData.ID, _ = uuid.FromBytes(gocqlID.Bytes())
 		healthData.EmotionLabel = emotionLabel
 		healthData.EmotionConfidence = emotionConfidence
-		
+
 		if startTimestamp != nil && healthData.Timestamp < *startTimestamp {
 			continue
 		}
 		if endTimestamp != nil && healthData.Timestamp > *endTimestamp {
 			continue
 		}
-		
+
 		healthDataList = append(healthDataList, healthData)
 	}
 
@@ -155,4 +169,3 @@ func (r *HealthDataRepository) GetByUserIDAndDateRange(userID uint, startDate, e
 
 	return healthDataList, nil
 }
-

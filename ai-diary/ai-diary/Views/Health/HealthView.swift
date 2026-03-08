@@ -91,6 +91,8 @@ struct HealthView: View {
     @EnvironmentObject var authStore: AuthStore
     @StateObject private var observer = HealthViewObserver()
     @State private var healthDataService: HealthDataService?
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var previousScenePhase: ScenePhase = .active
     
     private var healthKitService: HealthKitService? {
         syncManager.healthKitService
@@ -355,6 +357,13 @@ struct HealthView: View {
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
                 fetchLatestEmotion()
             }
+        }
+        .onChange(of: scenePhase) { newPhase in
+            if newPhase == .active && previousScenePhase != .active {
+                print("HealthView: App became active - refreshing health data")
+                healthKitService?.refreshOnAppBecomeActive()
+            }
+            previousScenePhase = newPhase
         }
     }
 }

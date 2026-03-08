@@ -1,7 +1,7 @@
 import Foundation
 
 struct AppConfig {
-    private static let defaultHost = "169.254.47.113"
+    private static let defaultHost = "192.168.1.109"
     private static let defaultPort = "8080"
     
     static var graphQLURL: URL {

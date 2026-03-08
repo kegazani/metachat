@@ -2,12 +2,14 @@ package graphql
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strings"
 
 	"metachat/internal/graphql/graph"
 	"metachat/internal/repository"
 	"metachat/internal/services"
+	"metachat/pkg/ctxkeys"
 	"metachat/pkg/utils"
 
 	"github.com/99designs/gqlgen/graphql"
@@ -47,18 +49,20 @@ func NewResolverWithRepos(userRepo *repository.UserRepository, chatRepo *reposit
 	}
 }
 
-const userIDKey = "userID"
-
 func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
+		log.Printf("[authMiddleware] Auth header present: %v", authHeader != "")
 		if authHeader != "" {
 			parts := strings.Split(authHeader, " ")
 			if len(parts) == 2 && parts[0] == "Bearer" {
 				token := parts[1]
 				claims, err := utils.ValidateToken(token)
-				if err == nil {
-					ctx := context.WithValue(r.Context(), userIDKey, claims.UserID)
+				if err != nil {
+					log.Printf("[authMiddleware] Token validation failed: %v", err)
+				} else {
+					log.Printf("[authMiddleware] Token valid, setting userID: %d in context", claims.UserID)
+					ctx := context.WithValue(r.Context(), ctxkeys.UserIDKey, claims.UserID)
 					r = r.WithContext(ctx)
 				}
 			}
@@ -82,16 +86,24 @@ func NewGraphQLHandler(resolver *graph.Resolver) http.Handler {
 		opCtx := graphql.GetOperationContext(ctx)
 		if opCtx != nil {
 			authHeader := opCtx.Headers.Get("Authorization")
+			log.Printf("[GraphQL AroundOperations] Auth header present: %v", authHeader != "")
 			if authHeader != "" {
 				parts := strings.Split(authHeader, " ")
 				if len(parts) == 2 && parts[0] == "Bearer" {
 					token := parts[1]
 					claims, err := utils.ValidateToken(token)
-					if err == nil {
-						ctx = context.WithValue(ctx, userIDKey, claims.UserID)
+					if err != nil {
+						log.Printf("[GraphQL AroundOperations] Token validation failed: %v", err)
+					} else {
+						log.Printf("[GraphQL AroundOperations] Token valid, userID: %d", claims.UserID)
+						ctx = context.WithValue(ctx, ctxkeys.UserIDKey, claims.UserID)
 					}
+				} else {
+					log.Printf("[GraphQL AroundOperations] Invalid auth header format")
 				}
 			}
+		} else {
+			log.Printf("[GraphQL AroundOperations] opCtx is nil")
 		}
 		return next(ctx)
 	})

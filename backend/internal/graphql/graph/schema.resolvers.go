@@ -9,9 +9,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"metachat/internal/graphql/graph/model"
 	"metachat/internal/models"
 	"metachat/internal/services"
+	"metachat/pkg/ctxkeys"
 	"metachat/pkg/utils"
 	"strconv"
 	"time"
@@ -253,7 +255,7 @@ func (r *mutationResolver) RemoveUserFromChat(ctx context.Context, chatID string
 func (r *mutationResolver) CreateChatHistory(ctx context.Context, input model.CreateChatHistoryInput) (*model.ChatHistory, error) {
 	userIDStr := input.UserID
 	if userIDStr == "" {
-		if userIDVal := ctx.Value("userID"); userIDVal != nil {
+		if userIDVal := ctx.Value(ctxkeys.UserIDKey); userIDVal != nil {
 			if userID, ok := userIDVal.(uint); ok {
 				userIDStr = fmt.Sprintf("%d", userID)
 			}
@@ -285,18 +287,49 @@ func (r *mutationResolver) CreateChatHistory(ctx context.Context, input model.Cr
 	healthDataList, err := r.HealthDataRepo.GetByUserID(userID, 1, 0)
 	if err == nil && len(healthDataList) > 0 {
 		latestHealth := healthDataList[0]
+		now := time.Now().Unix()
+		dataAge := now - latestHealth.Timestamp
+		maxAge := int64(5 * 60)
+		
+		heartRateStr := "nil"
 		if latestHealth.HeartRate != nil {
+			heartRateStr = fmt.Sprintf("%.2f", *latestHealth.HeartRate)
+		}
+		log.Printf("[CreateChatHistory] Последние данные о пульсе: heart_rate=%s, timestamp=%d, возраст данных=%d секунд (макс. %d)", 
+			heartRateStr, latestHealth.Timestamp, dataAge, maxAge)
+		
+		if dataAge > maxAge {
+			log.Printf("[CreateChatHistory] Данные о пульсе устарели (%d секунд), пропуск определения состояния", dataAge)
+		} else if latestHealth.HeartRate != nil {
+			log.Printf("[CreateChatHistory] Определение состояния для пользователя %d с heart_rate=%.2f (данные свежие, возраст %d сек)", userID, *latestHealth.HeartRate, dataAge)
 			aiResp, err := r.AIService.PredictEmotion(services.AIRequest{
 				HeartRate: *latestHealth.HeartRate,
+				SDNN:      latestHealth.SDNN,
+				RMSSD:     latestHealth.RMSSD,
+				PNN50:     latestHealth.PNN50,
+				ModelType: "4class",
 			})
-			if err == nil && aiResp != nil {
+			if err != nil {
+				log.Printf("[CreateChatHistory] Ошибка при определении состояния для heart_rate=%.2f: %v", *latestHealth.HeartRate, err)
+			} else if aiResp != nil {
 				emotionID := aiResp.PredictedEmotionID
 				emotionLabel := aiResp.PredictedEmotion
 				confidence := aiResp.Confidence
 				history.Emotion = &emotionID
 				history.EmotionLabel = &emotionLabel
 				history.EmotionConfidence = &confidence
+				log.Printf("[CreateChatHistory] Состояние определено: %s (ID: %d, confidence: %.2f) для heart_rate=%.2f", emotionLabel, emotionID, confidence, *latestHealth.HeartRate)
+			} else {
+				log.Printf("[CreateChatHistory] AI сервис вернул nil ответ для heart_rate=%.2f", *latestHealth.HeartRate)
 			}
+		} else {
+			log.Printf("[CreateChatHistory] HeartRate равен nil, пропуск определения состояния")
+		}
+	} else {
+		if err != nil {
+			log.Printf("[CreateChatHistory] Ошибка при получении health data для пользователя %d: %v", userID, err)
+		} else {
+			log.Printf("[CreateChatHistory] Health data не найдена для пользователя %d, пропуск определения состояния", userID)
 		}
 	}
 
@@ -379,7 +412,7 @@ func (r *mutationResolver) UpdateDiary(ctx context.Context, userID string, data 
 
 // CreateHealthData is the resolver for the createHealthData field.
 func (r *mutationResolver) CreateHealthData(ctx context.Context, input model.CreateHealthDataInput) (*model.HealthData, error) {
-	userIDVal := ctx.Value("userID")
+	userIDVal := ctx.Value(ctxkeys.UserIDKey)
 	if userIDVal == nil {
 		return nil, fmt.Errorf("unauthorized: user ID not found in context")
 	}
@@ -398,9 +431,17 @@ func (r *mutationResolver) CreateHealthData(ctx context.Context, input model.Cre
 		Timestamp: input.Timestamp.Unix(),
 	}
 
+	log.Printf("[CreateHealthData] Received input - HeartRate: %v, SDNN: %v, RMSSD: %v, PNN50: %v", input.HeartRate, input.Sdnn, input.Rmssd, input.Pnn50)
+	log.Printf("[CreateHealthData] Created healthData - HeartRate: %v, SDNN: %v, RMSSD: %v, PNN50: %v", healthData.HeartRate, healthData.SDNN, healthData.RMSSD, healthData.PNN50)
+
 	if healthData.HeartRate != nil {
+		log.Printf("[CreateHealthData] Sending to AI service - HeartRate: %.2f", *healthData.HeartRate)
 		aiResp, err := r.AIService.PredictEmotion(services.AIRequest{
 			HeartRate: *healthData.HeartRate,
+			SDNN:      healthData.SDNN,
+			RMSSD:     healthData.RMSSD,
+			PNN50:     healthData.PNN50,
+			ModelType: "4class",
 		})
 		if err != nil {
 			fmt.Printf("Error predicting emotion for heart rate %.2f: %v\n", *healthData.HeartRate, err)
@@ -637,7 +678,7 @@ func (r *queryResolver) Diary(ctx context.Context, userID string) (*model.Diary,
 // HealthData is the resolver for the healthData field.
 func (r *queryResolver) HealthData(ctx context.Context, userID string, startDate *time.Time, endDate *time.Time, limit *int32, offset *int32) ([]*model.HealthData, error) {
 	fmt.Printf("HealthData query: userID=%s, startDate=%v, endDate=%v, limit=%v, offset=%v\n", userID, startDate, endDate, limit, offset)
-	
+
 	userIDUint, err := strconv.ParseUint(userID, 10, 32)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)
@@ -672,6 +713,35 @@ func (r *queryResolver) HealthData(ctx context.Context, userID string, startDate
 
 	result := make([]*model.HealthData, len(healthDataList))
 	for i, h := range healthDataList {
+		// Always call AI service to get fresh emotion prediction
+		if h.HeartRate != nil {
+			fmt.Printf("[HealthData] Calling AI service for record %s with HR=%.2f, SDNN=%v, RMSSD=%v, PNN50=%v\n",
+				h.ID.String(), *h.HeartRate, h.SDNN, h.RMSSD, h.PNN50)
+			aiResp, aiErr := r.AIService.PredictEmotion(services.AIRequest{
+				HeartRate: *h.HeartRate,
+				SDNN:      h.SDNN,
+				RMSSD:     h.RMSSD,
+				PNN50:     h.PNN50,
+				ModelType: "4class",
+			})
+			if aiErr != nil {
+				fmt.Printf("[HealthData] AI service error: %v\n", aiErr)
+			} else if aiResp != nil {
+				emotionID := aiResp.PredictedEmotionID
+				emotionLabel := aiResp.PredictedEmotion
+				confidence := aiResp.Confidence
+				h.Emotion = &emotionID
+				h.EmotionLabel = &emotionLabel
+				h.EmotionConfidence = &confidence
+				fmt.Printf("[HealthData] AI prediction: %s (ID: %d, confidence: %.2f) for HR=%.2f\n", emotionLabel, emotionID, confidence, *h.HeartRate)
+
+				// Update record in database
+				if updateErr := r.HealthDataRepo.Update(&h); updateErr != nil {
+					fmt.Printf("[HealthData] Failed to update record: %v\n", updateErr)
+				}
+			}
+		}
+
 		var emotion *int32
 		if h.Emotion != nil {
 			val := int32(*h.Emotion)

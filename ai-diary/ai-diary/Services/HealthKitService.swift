@@ -373,14 +373,41 @@ class HealthKitService: ObservableObject {
         healthStore.execute(query)
     }
     
+    func calculateRMSSD(from sdnn: Double?) -> Double? {
+        guard let sdnn = sdnn else { return nil }
+        let rmssd = 0.8 * sdnn
+        return max(5.0, min(150.0, rmssd))
+    }
+    
+    func calculatePNN50(from rmssd: Double?) -> Double? {
+        guard let rmssd = rmssd, rmssd > 0 else { return 0.0 }
+        let pnn50 = 100.0 * Darwin.erfc(50.0 / (rmssd * sqrt(2.0)))
+        return max(0.0, min(100.0, pnn50))
+    }
+    
+    func estimateSDNN(from heartRate: Double?) -> Double? {
+        guard let heartRate = heartRate, heartRate > 0 else { return nil }
+        let meanRR = 60000.0 / heartRate
+        let sdnn = 0.05 * meanRR
+        return max(10.0, min(200.0, sdnn))
+    }
+    
+    func getCalculatedHRVMetrics() -> (sdnn: Double?, rmssd: Double?, pnn50: Double?) {
+        let sdnn = currentSDNN ?? estimateSDNN(from: currentHeartRate)
+        let rmssd = calculateRMSSD(from: sdnn)
+        let pnn50 = calculatePNN50(from: rmssd)
+        return (sdnn, rmssd, pnn50)
+    }
+    
     func getCurrentHealthData(timestamp: Date? = nil) -> HealthData {
+        let metrics = getCalculatedHRVMetrics()
         return HealthData(
             id: nil,
             userId: nil,
             heartRate: currentHeartRate,
-            sdnn: currentSDNN,
-            rmssd: nil,
-            pnn50: nil,
+            sdnn: metrics.sdnn,
+            rmssd: metrics.rmssd,
+            pnn50: metrics.pnn50,
             emotion: nil,
             emotionLabel: nil,
             emotionConfidence: nil,
@@ -417,13 +444,27 @@ class HealthKitService: ObservableObject {
         refreshTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(nanoseconds: 15_000_000_000)
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
                     guard let self = self else { break }
                     print("Periodic refresh triggered at \(Date())")
                     self.fetchLatestValues()
                 } catch {
                     break
                 }
+            }
+        }
+    }
+    
+    func refreshOnAppBecomeActive() {
+        print("App became active - refreshing health data")
+        guard let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate) else {
+            fetchLatestValues()
+            return
+        }
+        
+        triggerHealthKitSync(for: heartRateType) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.fetchLatestValues()
             }
         }
     }

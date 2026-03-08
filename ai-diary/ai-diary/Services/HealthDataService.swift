@@ -9,12 +9,17 @@ class HealthDataService {
     
     private func performRequest(query: String, variables: [String: Any]) async throws -> [String: Any] {
         let url = AppConfig.graphQLURL
+        print("[HealthDataService] Request URL: \(url)")
+        print("[HealthDataService] Token present: \(authStore.token != nil)")
+        
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         if let token = authStore.token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        } else {
+            print("[HealthDataService] WARNING: No auth token available!")
         }
         
         let body: [String: Any] = [
@@ -22,28 +27,57 @@ class HealthDataService {
             "variables": variables
         ]
         
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = bodyData
         request.timeoutInterval = 30
         
+        if let bodyString = String(data: bodyData, encoding: .utf8) {
+            print("[HealthDataService] Request body: \(bodyString)")
+        }
+        
         let session = ApolloClientService.shared.apollo
-        let (data, response) = try await session.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw ServiceError.invalidResponse
+        do {
+            let (data, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("[HealthDataService] ERROR: Response is not HTTPURLResponse")
+                throw ServiceError.invalidResponse
+            }
+            
+            print("[HealthDataService] Response status: \(httpResponse.statusCode)")
+            
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("[HealthDataService] Response body: \(responseString)")
+            }
+            
+            guard httpResponse.statusCode == 200 else {
+                print("[HealthDataService] ERROR: HTTP status \(httpResponse.statusCode)")
+                throw ServiceError.invalidResponse
+            }
+            
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            
+            if let errors = json?["errors"] as? [[String: Any]],
+               let errorMessage = errors.first?["message"] as? String {
+                print("[HealthDataService] GraphQL error: \(errorMessage)")
+                throw ServiceError.serverError(errorMessage)
+            }
+            
+            return json ?? [:]
+        } catch let urlError as URLError {
+            print("[HealthDataService] URLError: \(urlError.code.rawValue) - \(urlError.localizedDescription)")
+            throw urlError
+        } catch {
+            print("[HealthDataService] Request error: \(error)")
+            throw error
         }
-        
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        
-        if let errors = json?["errors"] as? [[String: Any]],
-           let errorMessage = errors.first?["message"] as? String {
-            throw ServiceError.serverError(errorMessage)
-        }
-        
-        return json ?? [:]
     }
     
     func sendHealthData(heartRate: Double?, sdnn: Double?, rmssd: Double?, pnn50: Double?) async throws -> HealthData {
+        print("[HealthDataService] ========== sendHealthData CALLED ==========")
+        print("[HealthDataService] Parameters - HR: \(String(describing: heartRate)), SDNN: \(String(describing: sdnn))")
+        
         let query = """
         mutation CreateHealthData($input: CreateHealthDataInput!) {
           createHealthData(input: $input) {
@@ -70,7 +104,10 @@ class HealthDataService {
         ]
         
         if let heartRate = heartRate {
+            print("[HealthDataService] Adding heartRate to input: \(heartRate)")
             input["heartRate"] = heartRate
+        } else {
+            print("[HealthDataService] WARNING: heartRate is nil, not adding to input")
         }
         
         if let sdnn = sdnn {
